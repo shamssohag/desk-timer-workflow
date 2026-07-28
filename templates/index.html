@@ -342,21 +342,21 @@
 
                     if (currentTimeLeft === 0) {
                         if (lastAlertedTime !== 0) {
-                            if (notifEnabled) {
-                                if (Notification.permission === "granted") {
-                                    let titleText = "Workflow Finished!";
-                                    let bodyText = "Time's up! Please complete your post.";
-                                    let iconUrl = "https://cdn-icons-png.flaticon.com/512/733/733547.png";
-
+                            // নোটিফিকেশন এবং সাউন্ড সম্পূর্ণ নন-ব্লকিং করার জন্য setTimeout ব্যবহার করা হয়েছে
+                            setTimeout(() => {
+                                if (notifEnabled && Notification.permission === "granted") {
                                     try {
+                                        let titleText = "Workflow Finished!";
+                                        let bodyText = "Time's up! Please complete your post.";
+                                        let iconUrl = "https://cdn-icons-png.flaticon.com/512/733/733547.png";
+
                                         let notification = new Notification(titleText, {
                                             body: bodyText,
                                             icon: iconUrl
                                         });
 
-                                        // ১০ সেকেন্ড পর নোটিফিকেশনটি স্বয়ংক্রিয়ভাবে বন্ধ হয়ে যাবে
                                         setTimeout(() => {
-                                            notification.close();
+                                            try { notification.close(); } catch(e){}
                                         }, 10000);
 
                                         notification.onclick = function() {
@@ -367,11 +367,12 @@
                                         console.log("Notification error:", err);
                                     }
                                 }
-                            }
 
-                            if (soundEnabled) {
-                                playBeepSound();
-                            }
+                                if (soundEnabled) {
+                                    playBeepSound();
+                                }
+                            }, 10);
+
                             lastAlertedTime = 0;
                         }
                     }
