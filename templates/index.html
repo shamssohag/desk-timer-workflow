@@ -229,6 +229,10 @@
         let notifEnabled = localStorage.getItem('notifEnabled') !== 'false';
         let lastAlertedTime = -1;
 
+        let currentTimeLeft = 300;
+        let isTimerRunning = false;
+        let localInterval = null;
+
         let audioCtx = null;
 
         function initAudioContext() {
@@ -323,6 +327,56 @@
             }
         }
 
+        // ব্রাউজারের লোকাল টিক কাউন্টার যা প্রতি সেকেন্ডে টাইম কমাবে
+        function startLocalTicker() {
+            if (localInterval) clearInterval(localInterval);
+            localInterval = setInterval(() => {
+                if (isTimerRunning && currentTimeLeft > 0) {
+                    currentTimeLeft--;
+                    timerBox.innerText = formatTime(currentTimeLeft);
+
+                    if (currentTimeLeft <= 10 && currentTimeLeft > 0) {
+                        timerBox.classList.add('pulse');
+                    } else {
+                        timerBox.classList.remove('pulse');
+                    }
+
+                    if (currentTimeLeft === 0) {
+                        if (lastAlertedTime !== 0) {
+                            if (notifEnabled) {
+                                if (Notification.permission === "granted") {
+                                    let titleText = "Workflow Finished!";
+                                    let bodyText = "Time's up! Please complete your post.";
+                                    let iconUrl = "https://cdn-icons-png.flaticon.com/512/733/733547.png";
+
+                                    try {
+                                        let notification = new Notification(titleText, {
+                                            body: bodyText,
+                                            icon: iconUrl,
+                                            requireInteraction: true
+                                        });
+                                        notification.onclick = function() {
+                                            window.focus();
+                                            notification.close();
+                                        };
+                                    } catch (err) {
+                                        console.log("Notification error:", err);
+                                    }
+                                }
+                            }
+
+                            if (soundEnabled) {
+                                playBeepSound();
+                            }
+                            lastAlertedTime = 0;
+                        }
+                    }
+                }
+            }, 1000);
+        }
+
+        startLocalTicker();
+
         intervalSelect.addEventListener('change', function() {
             let duration = parseInt(this.value);
             socket.emit('reset_timer', { duration: duration });
@@ -346,8 +400,10 @@
         });
 
         socket.on('update_timer', function(data) {
-            timerBox.innerText = formatTime(data.time_left);
+            currentTimeLeft = data.time_left;
+            isTimerRunning = data.is_running;
 
+            timerBox.innerText = formatTime(currentTimeLeft);
             statusText.innerText = `Status: ${data.status_msg}`;
             intervalSelect.value = data.duration;
             
@@ -367,60 +423,14 @@
                 updateUIStates();
             }
 
-            if (data.is_running && data.time_left <= 10 && data.time_left > 0) {
+            if (isTimerRunning && currentTimeLeft <= 10 && currentTimeLeft > 0) {
                 timerBox.classList.add('pulse');
             } else {
                 timerBox.classList.remove('pulse');
             }
 
-            if (data.time_left === 0) {
-                if (lastAlertedTime !== 0) {
-				
-				
-				
-				// ১. নোটিফিকেশন চেক 
-if (notifEnabled) {
-    if (Notification.permission === "granted") {
-        let titleText = data.current_step === 'social' ? "📱 Social Workflow Finished!" : "🌐 Web Workflow Finished!";
-        let bodyText = data.current_step === 'social' ? 
-            "Social Team: Time's up! Please complete your post." : 
-            "Web Team: Time's up! Please complete your post.";
-        
-        // আরও পরিষ্কার এবং উজ্জ্বল আইকন লিংক ব্যবহার করা হয়েছে
-        let iconUrl = data.current_step === 'social' ? 
-            "https://cdn-icons-png.flaticon.com/512/733/733547.png" :  // স্পষ্ট ফেসবুক বা সোশ্যাল আইকন
-            "https://cdn-icons-png.flaticon.com/512/1006/1006771.png"; // ওয়েব আইকন
-
-        try {
-            let notification = new Notification(titleText, {
-                body: bodyText,
-                icon: iconUrl,
-                requireInteraction: true // এটি নোটিফিকেশনকে স্ক্রিনে স্থির রাখবে যতক্ষণ না ব্যবহারকারী নিজে ক্লোজ বা ক্লিক করেন
-            });
-            
-            notification.onclick = function() {
-                window.focus();
-                notification.close();
-            };
-        } catch (err) {
-            console.log("Notification error:", err);
-        }
-    } else if (Notification.permission !== "denied") {
-        Notification.requestPermission();
-    }
-}
-                    
-                    
-
-                    // ২. সাউন্ড চেক
-                    if (soundEnabled) {
-                        playBeepSound();
-                    }
-
-                    lastAlertedTime = 0;
-                }
-            } else {
-                lastAlertedTime = data.time_left;
+            if (currentTimeLeft > 0) {
+                lastAlertedTime = currentTimeLeft;
             }
         });
     </script>
