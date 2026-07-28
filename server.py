@@ -86,8 +86,9 @@ def handle_reset(data):
     duration = int(raw_duration) if raw_duration is not None else timer_state['duration']
     timer_state['duration'] = duration
     timer_state['time_left'] = duration
+    timer_state['duration'] = duration
+    timer_state['time_left'] = duration
     timer_state['current_step'] = 'social'
-  timer_state['current_step'] = 'social'
     timer_state['status_msg'] = 'Start your countdown.'
     socketio.emit('update_timer', timer_state)
 
