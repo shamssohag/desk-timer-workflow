@@ -327,7 +327,6 @@
             }
         }
 
-        // ব্রাউজারের লোকাল টিক কাউন্টার যা প্রতি সেকেন্ডে টাইম কমাবে
         function startLocalTicker() {
             if (localInterval) clearInterval(localInterval);
             localInterval = setInterval(() => {
@@ -352,9 +351,14 @@
                                     try {
                                         let notification = new Notification(titleText, {
                                             body: bodyText,
-                                            icon: iconUrl,
-                                            requireInteraction: true
+                                            icon: iconUrl
                                         });
+
+                                        // ১০ সেকেন্ড পর নোটিফিকেশনটি স্বয়ংক্রিয়ভাবে বন্ধ হয়ে যাবে
+                                        setTimeout(() => {
+                                            notification.close();
+                                        }, 10000);
+
                                         notification.onclick = function() {
                                             window.focus();
                                             notification.close();
