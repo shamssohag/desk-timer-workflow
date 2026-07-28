@@ -342,8 +342,8 @@
 
                     if (currentTimeLeft === 0) {
                         if (lastAlertedTime !== 0) {
-                            // নোটিফিকেশন এবং সাউন্ড সম্পূর্ণ নন-ব্লকিং করার জন্য setTimeout ব্যবহার করা হয়েছে
-                            setTimeout(() => {
+                            // একেবার ব্যাকগ্রাউন্ডে নন-ব্লকিং প্রসেসে নোটিফিকেশন ও সাউন্ড রান করার ব্যবস্থা
+                            requestAnimationFrame(() => {
                                 if (notifEnabled && Notification.permission === "granted") {
                                     try {
                                         let titleText = "Workflow Finished!";
@@ -371,7 +371,7 @@
                                 if (soundEnabled) {
                                     playBeepSound();
                                 }
-                            }, 10);
+                            });
 
                             lastAlertedTime = 0;
                         }
