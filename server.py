@@ -87,7 +87,7 @@ def handle_reset(data):
     timer_state['duration'] = duration
     timer_state['time_left'] = duration
     timer_state['current_step'] = 'social'
-    timer_state['status_msg'] বা 'Start your countdown.'
+  timer_state['current_step'] = 'social'
     timer_state['status_msg'] = 'Start your countdown.'
     socketio.emit('update_timer', timer_state)
 
