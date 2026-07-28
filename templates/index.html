@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Central Loop & Post Workflow</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
     <style>
         body {
             background-color: #0f172a;
@@ -115,7 +114,6 @@
             background-color: #0f172a !important;
             color: #f8fafc !important;
             border-color: #475569 !important;
-            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
         }
     </style>
 </head>
@@ -170,7 +168,7 @@
         <div id="timerBox" class="timer-display mb-3">05:00</div>
 
         <div class="alert alert-secondary bg-dark border-secondary text-center py-3 mb-4 rounded-3">
-            <span id="statusText" class="fw-bold fs-5">Status: Start your countdown.</span>
+            <span id="statusText" class="fw-bold fs-5">Status: Ready to start.</span>
         </div>
 
         <div class="d-flex justify-content-center gap-2 mb-4">
@@ -185,13 +183,13 @@
             <div class="col-md-6">
                 <button id="socialDoneBtn" class="btn btn-primary workflow-btn w-100 text-start d-flex flex-column align-items-start" style="background-color: #7c3aed; border-color: #7c3aed;">
                     <span>Social Post Done</span>
-                    <small class="text-light opacity-75 fw-normal mt-1">Auto-starts Web Timer</small>
+                    <small class="text-light opacity-75 fw-normal mt-1">Auto-switches to Web Timer</small>
                 </button>
             </div>
             <div class="col-md-6">
                 <button id="webDoneBtn" class="btn btn-success workflow-btn w-100 text-start d-flex flex-column align-items-start" style="background-color: #0891b2; border-color: #0891b2;">
                     <span>Web Post Done</span>
-                    <small class="text-light opacity-75 fw-normal mt-1">Auto-starts Social Timer</small>
+                    <small class="text-light opacity-75 fw-normal mt-1">Auto-switches to Social Timer</small>
                 </button>
             </div>
         </div>
@@ -203,8 +201,6 @@
                 Notification.requestPermission();
             }
         });
-
-        const socket = io();
 
         const mainCard = document.getElementById('mainCard');
         const deptTitle = document.getElementById('deptTitle');
@@ -227,11 +223,12 @@
         let soundEnabled = localStorage.getItem('soundEnabled') !== 'false';
         let continuousEnabled = localStorage.getItem('continuousEnabled') !== 'false';
         let notifEnabled = localStorage.getItem('notifEnabled') !== 'false';
-        let lastAlertedTime = -1;
 
-        let currentTimeLeft = 300;
+        let currentDuration = parseInt(intervalSelect.value);
+        let currentTimeLeft = currentDuration;
         let isTimerRunning = false;
-        let localInterval = null;
+        let currentStep = 'social'; // 'social' অথবা 'web'
+        let timerInterval = null;
 
         let audioCtx = null;
 
@@ -252,13 +249,11 @@
             try {
                 initAudioContext();
                 if (!audioCtx) return;
-
                 const oscillator = audioCtx.createOscillator();
                 const gainNode = audioCtx.createGain();
 
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
-
                 gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
 
@@ -281,6 +276,16 @@
 
             notifText.innerText = notifEnabled ? "Notif: ON" : "Notif: OFF";
             notifToggleBtn.className = notifEnabled ? "smart-toggle active" : "smart-toggle";
+
+            if (currentStep === 'social') {
+                mainCard.className = "main-card card-social";
+                deptTitle.innerText = "Social Workflow";
+                deptTitle.style.color = "#c084fc";
+            } else {
+                mainCard.className = "main-card card-web";
+                deptTitle.innerText = "Web Workflow";
+                deptTitle.style.color = "#22d3ee";
+            }
         }
         updateUIStates();
 
@@ -295,7 +300,6 @@
             continuousEnabled = !continuousEnabled;
             localStorage.setItem('continuousEnabled', continuousEnabled);
             updateUIStates();
-            socket.emit('toggle_continuous', { continuous_loop: continuousEnabled });
         });
 
         notifToggleBtn.addEventListener('click', () => {
@@ -304,22 +308,10 @@
             updateUIStates();
         });
 
-        manualSetBtn.addEventListener('click', () => {
-            let mins = parseInt(manualInput.value);
-            if (!isNaN(mins) && mins > 0) {
-                let totalSeconds = mins * 60;
-                socket.emit('reset_timer', { duration: totalSeconds });
-                manualInput.value = '';
-            } else {
-                alert('Please enter a valid number of minutes.');
-            }
-        });
-
         function formatTime(seconds) {
             let h = Math.floor(seconds / 3600);
             let m = Math.floor((seconds % 3600) / 60);
             let s = seconds % 60;
-
             if (h > 0) {
                 return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
             } else {
@@ -327,105 +319,12 @@
             }
         }
 
-        function startLocalTicker() {
-            if (localInterval) clearInterval(localInterval);
-            localInterval = setInterval(() => {
-                if (isTimerRunning && currentTimeLeft > 0) {
-                    currentTimeLeft--;
-                    timerBox.innerText = formatTime(currentTimeLeft);
-
-                    if (currentTimeLeft <= 10 && currentTimeLeft > 0) {
-                        timerBox.classList.add('pulse');
-                    } else {
-                        timerBox.classList.remove('pulse');
-                    }
-
-                    if (currentTimeLeft === 0) {
-                        if (lastAlertedTime !== 0) {
-                            // একেবার ব্যাকগ্রাউন্ডে নন-ব্লকিং প্রসেসে নোটিফিকেশন ও সাউন্ড রান করার ব্যবস্থা
-                            requestAnimationFrame(() => {
-                                if (notifEnabled && Notification.permission === "granted") {
-                                    try {
-                                        let titleText = "Workflow Finished!";
-                                        let bodyText = "Time's up! Please complete your post.";
-                                        let iconUrl = "https://cdn-icons-png.flaticon.com/512/733/733547.png";
-
-                                        let notification = new Notification(titleText, {
-                                            body: bodyText,
-                                            icon: iconUrl
-                                        });
-
-                                        setTimeout(() => {
-                                            try { notification.close(); } catch(e){}
-                                        }, 10000);
-
-                                        notification.onclick = function() {
-                                            window.focus();
-                                            notification.close();
-                                        };
-                                    } catch (err) {
-                                        console.log("Notification error:", err);
-                                    }
-                                }
-
-                                if (soundEnabled) {
-                                    playBeepSound();
-                                }
-                            });
-
-                            lastAlertedTime = 0;
-                        }
-                    }
-                }
-            }, 1000);
-        }
-
-        startLocalTicker();
-
-        intervalSelect.addEventListener('change', function() {
-            let duration = parseInt(this.value);
-            socket.emit('reset_timer', { duration: duration });
-        });
-
-        startBtn.addEventListener('click', () => { socket.emit('start_timer'); });
-        pauseBtn.addEventListener('click', () => { socket.emit('pause_timer'); });
-        resetBtn.addEventListener('click', () => {
-            let duration = parseInt(intervalSelect.value);
-            socket.emit('reset_timer', { duration: duration });
-        });
-
-        socialDoneBtn.addEventListener('click', () => {
-            let duration = parseInt(intervalSelect.value);
-            socket.emit('post_done', { step: 'web', duration: duration });
-        });
-
-        webDoneBtn.addEventListener('click', () => {
-            let duration = parseInt(intervalSelect.value);
-            socket.emit('post_done', { step: 'social', duration: duration });
-        });
-
-        socket.on('update_timer', function(data) {
-            currentTimeLeft = data.time_left;
-            isTimerRunning = data.is_running;
-
+        function updateDisplay() {
             timerBox.innerText = formatTime(currentTimeLeft);
-            statusText.innerText = `Status: ${data.status_msg}`;
-            intervalSelect.value = data.duration;
-            
-            if (data.current_step === 'social') {
-                mainCard.className = "main-card card-social";
-                deptTitle.innerText = "Social Workflow";
-                deptTitle.style.color = "#c084fc";
+            if (isTimerRunning) {
+                statusText.innerText = `Status: ${currentStep === 'social' ? 'Social' : 'Web'} Timer is Running...`;
             } else {
-                mainCard.className = "main-card card-web";
-                deptTitle.innerText = "Web Workflow";
-                deptTitle.style.color = "#22d3ee";
-            }
-
-            if (data.continuous_loop !== undefined) {
-                continuousEnabled = data.continuous_loop;
-                localStorage.setItem('continuousEnabled', continuousEnabled);
-                updateUIStates();
+                statusText.innerText = `Status: Timer Paused / Ready.`;
             }
 
             if (isTimerRunning && currentTimeLeft <= 10 && currentTimeLeft > 0) {
@@ -433,11 +332,117 @@
             } else {
                 timerBox.classList.remove('pulse');
             }
+        }
 
-            if (currentTimeLeft > 0) {
-                lastAlertedTime = currentTimeLeft;
+        function triggerAlertAndSwitch() {
+            // নন-ব্লকিং নোটিফিকেশন ও সাউন্ড
+            setTimeout(() => {
+                if (notifEnabled && Notification.permission === "granted") {
+                    try {
+                        let titleText = currentStep === 'social' ? "Social Team: Time's up!" : "Web Team: Time's up!";
+                        let bodyText = "Please complete your post.";
+                        let iconUrl = currentStep === 'social' ? 
+                            "https://cdn-icons-png.flaticon.com/512/733/733547.png" : 
+                            "https://cdn-icons-png.flaticon.com/512/1006/1006771.png";
+
+                        let notification = new Notification(titleText, { body: bodyText, icon: iconUrl });
+                        setTimeout(() => { try { notification.close(); } catch(e){} }, 10000);
+                        notification.onclick = function() { window.focus(); notification.close(); };
+                    } catch (err) {
+                        console.log("Notification error:", err);
+                    }
+                }
+                if (soundEnabled) {
+                    playBeepSound();
+                }
+            }, 10);
+
+            // অটো লুপ অন থাকলে স্টেপ পরিবর্তন হবে
+            if (continuousEnabled) {
+                currentStep = (currentStep === 'social') ? 'web' : 'social';
+                currentTimeLeft = currentDuration;
+                updateUIStates();
+            } else {
+                isTimerRunning = false;
+                clearInterval(timerInterval);
+            }
+        }
+
+        function startTimerInterval() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (isTimerRunning) {
+                    if (currentTimeLeft > 0) {
+                        currentTimeLeft--;
+                        updateDisplay();
+                    }
+                    if (currentTimeLeft === 0) {
+                        triggerAlertAndSwitch();
+                    }
+                }
+            }, 1000);
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (currentTimeLeft <= 0) currentTimeLeft = currentDuration;
+            isTimerRunning = true;
+            updateDisplay();
+            startTimerInterval();
+        });
+
+        pauseBtn.addEventListener('click', () => {
+            isTimerRunning = false;
+            updateDisplay();
+        });
+
+        resetBtn.addEventListener('click', () => {
+            isTimerRunning = false;
+            currentDuration = parseInt(intervalSelect.value);
+            currentTimeLeft = currentDuration;
+            updateDisplay();
+        });
+
+        intervalSelect.addEventListener('change', function() {
+            currentDuration = parseInt(this.value);
+            if (!isTimerRunning) {
+                currentTimeLeft = currentDuration;
+                updateDisplay();
             }
         });
+
+        manualSetBtn.addEventListener('click', () => {
+            let mins = parseInt(manualInput.value);
+            if (!isNaN(mins) && mins > 0) {
+                currentDuration = mins * 60;
+                currentTimeLeft = currentDuration;
+                manualInput.value = '';
+                updateDisplay();
+            } else {
+                alert('Please enter a valid number of minutes.');
+            }
+        });
+
+        socialDoneBtn.addEventListener('click', () => {
+            currentStep = 'web';
+            currentDuration = parseInt(intervalSelect.value);
+            currentTimeLeft = currentDuration;
+            isTimerRunning = true;
+            updateUIStates();
+            updateDisplay();
+            startTimerInterval();
+        });
+
+        webDoneBtn.addEventListener('click', () => {
+            currentStep = 'social';
+            currentDuration = parseInt(intervalSelect.value);
+            currentTimeLeft = currentDuration;
+            isTimerRunning = true;
+            updateUIStates();
+            updateDisplay();
+            startTimerInterval();
+        });
+
+        updateDisplay();
     </script>
 </body>
 </html>
