@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Central Loop & Post Workflow</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
     <style>
         body {
             background-color: #0f172a;
@@ -116,7 +115,7 @@
             color: #f8fafc !important;
             border-color: #475569 !important;
         }
-        /* ইউনিভার্সাল স্ক্রিন অ্যালার্ট মডাল */
+        /* ইউনিভার্সাল ফ্লোটিং অ্যালার্ট মডাল */
         #universalAlertModal {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -238,8 +237,6 @@
             }
         });
 
-        const socket = io();
-
         const mainCard = document.getElementById('mainCard');
         const deptTitle = document.getElementById('deptTitle');
         const timerBox = document.getElementById('timerBox');
@@ -266,7 +263,11 @@
         let continuousEnabled = localStorage.getItem('continuousEnabled') !== 'false';
         let notifEnabled = localStorage.getItem('notifEnabled') !== 'false';
 
-        let lastAlertedTime = -1;
+        let currentDuration = parseInt(intervalSelect.value);
+        let currentTimeLeft = currentDuration;
+        let isTimerRunning = false;
+        let currentStep = 'social'; 
+        let timerInterval = null;
 
         let audioCtx = null;
 
@@ -314,6 +315,16 @@
 
             notifText.innerText = notifEnabled ? "Notif: ON" : "Notif: OFF";
             notifToggleBtn.className = notifEnabled ? "smart-toggle active" : "smart-toggle";
+
+            if (currentStep === 'social') {
+                mainCard.className = "main-card card-social";
+                deptTitle.innerText = "Social Workflow";
+                deptTitle.style.color = "#c084fc";
+            } else {
+                mainCard.className = "main-card card-web";
+                deptTitle.innerText = "Web Workflow";
+                deptTitle.style.color = "#22d3ee";
+            }
         }
         updateUIStates();
 
@@ -328,24 +339,12 @@
             continuousEnabled = !continuousEnabled;
             localStorage.setItem('continuousEnabled', continuousEnabled);
             updateUIStates();
-            socket.emit('toggle_continuous', { continuous_loop: continuousEnabled });
         });
 
         notifToggleBtn.addEventListener('click', () => {
             notifEnabled = !notifEnabled;
             localStorage.setItem('notifEnabled', notifEnabled);
             updateUIStates();
-        });
-
-        manualSetBtn.addEventListener('click', () => {
-            let mins = parseInt(manualInput.value);
-            if (!isNaN(mins) && mins > 0) {
-                let totalSeconds = mins * 60;
-                socket.emit('reset_timer', { duration: totalSeconds });
-                manualInput.value = '';
-            } else {
-                alert('Please enter a valid number of minutes.');
-            }
         });
 
         function formatTime(seconds) {
@@ -359,128 +358,12 @@
             }
         }
 
-        // ব্রাউজারের লোকাল নন-ব্লকিং টিকার যা ট্যাব অটো-অ্যাক্টিভ ও ইউনিভার্সাল অ্যালার্ট সামলাবে
-        let currentTimeLeft = 300;
-        let isTimerRunning = false;
-        let localInterval = null;
-        let currentStepGlobal = 'social';
-
-        function startLocalTicker() {
-            if (localInterval) clearInterval(localInterval);
-            localInterval = setInterval(() => {
-                if (isTimerRunning && currentTimeLeft > 0) {
-                    currentTimeLeft--;
-                    timerBox.innerText = formatTime(currentTimeLeft);
-
-                    if (currentTimeLeft <= 10 && currentTimeLeft > 0) {
-                        timerBox.classList.add('pulse');
-                    } else {
-                        timerBox.classList.remove('pulse');
-                    }
-
-                    if (currentTimeLeft === 0) {
-                        if (lastAlertedTime !== 0) {
-                            setTimeout(() => {
-                                // ১. ব্রাউজার ট্যাব ব্যাকগ্রাউন্ড থেকে স্বয়ংক্রিয় ফোকাস বা একটিভ করার চেষ্টা
-                                window.focus();
-
-                                let titleText = currentStepGlobal === 'social' ? 
-                                    "Social Team: Time's up! Please complete your post." : 
-                                    "Web Team: Time's up! Please complete your post.";
-
-                                // ২. ব্রাউজার পুশ নোটিফিকেশন পাঠানো
-                                if (notifEnabled && "Notification" in window && Notification.permission === "granted") {
-                                    try {
-                                        let iconUrl = currentStepGlobal === 'social' ? 
-                                            "https://cdn-icons-png.flaticon.com/512/733/733547.png" : 
-                                            "https://cdn-icons-png.flaticon.com/512/1006/1006771.png";
-
-                                        let notification = new Notification(titleText, {
-                                            body: "Time is up! Click to view.",
-                                            icon: iconUrl,
-                                            requireInteraction: true
-                                        });
-
-                                        setTimeout(() => { try { notification.close(); } catch(e){} }, 10000);
-
-                                        notification.onclick = function() {
-                                            window.focus();
-                                            notification.close();
-                                        };
-                                    } catch (err) {
-                                        console.log("Notification error:", err);
-                                    }
-                                }
-
-                                // ৩. সাউন্ড বাজানো
-                                if (soundEnabled) {
-                                    playBeepSound();
-                                }
-
-                                // ৪. ইউনিভার্সাল স্ক্রিন মডাল পপ-আপ (সব ব্রাউজারের জন্য নিশ্চিত অ্যালার্ট)
-                                modalAlertTitle.innerText = titleText;
-                                universalAlertModal.style.display = 'flex';
-
-                            }, 10);
-
-                            lastAlertedTime = 0;
-                        }
-                    }
-                }
-            }, 1000);
-        }
-
-        startLocalTicker();
-
-        closeModalBtn.addEventListener('click', () => {
-            universalAlertModal.style.display = 'none';
-        });
-
-        intervalSelect.addEventListener('change', function() {
-            let duration = parseInt(this.value);
-            socket.emit('reset_timer', { duration: duration });
-        });
-
-        startBtn.addEventListener('click', () => { socket.emit('start_timer'); });
-        pauseBtn.addEventListener('click', () => { socket.emit('pause_timer'); });
-        resetBtn.addEventListener('click', () => {
-            let duration = parseInt(intervalSelect.value);
-            socket.emit('reset_timer', { duration: duration });
-        });
-
-        socialDoneBtn.addEventListener('click', () => {
-            let duration = parseInt(intervalSelect.value);
-            socket.emit('post_done', { step: 'web', duration: duration });
-        });
-
-        webDoneBtn.addEventListener('click', () => {
-            let duration = parseInt(intervalSelect.value);
-            socket.emit('post_done', { step: 'social', duration: duration });
-        });
-
-        socket.on('update_timer', function(data) {
-            currentTimeLeft = data.time_left;
-            isTimerRunning = data.is_running;
-            currentStepGlobal = data.current_step;
-
+        function updateDisplay() {
             timerBox.innerText = formatTime(currentTimeLeft);
-            statusText.innerText = `Status: ${data.status_msg}`;
-            intervalSelect.value = data.duration;
-            
-            if (data.current_step === 'social') {
-                mainCard.className = "main-card card-social";
-                deptTitle.innerText = "Social Workflow";
-                deptTitle.style.color = "#c084fc";
+            if (isTimerRunning) {
+                statusText.innerText = `Status: ${currentStep === 'social' ? 'Social' : 'Web'} Timer is Running...`;
             } else {
-                mainCard.className = "main-card card-web";
-                deptTitle.innerText = "Web Workflow";
-                deptTitle.style.color = "#22d3ee";
-            }
-
-            if (data.continuous_loop !== undefined) {
-                continuousEnabled = data.continuous_loop;
-                localStorage.setItem('continuousEnabled', continuousEnabled);
-                updateUIStates();
+                statusText.innerText = `Status: Timer Paused / Ready.`;
             }
 
             if (isTimerRunning && currentTimeLeft <= 10 && currentTimeLeft > 0) {
@@ -488,11 +371,132 @@
             } else {
                 timerBox.classList.remove('pulse');
             }
+        }
 
-            if (currentTimeLeft > 0) {
-                lastAlertedTime = currentTimeLeft;
+        function triggerUniversalAlert() {
+            let titleText = currentStep === 'social' ? "Social Team: Time's up! Please complete your post." : "Web Team: Time's up! Please complete your post.";
+            
+            // ১. ব্রাউজার পুশ নোটিফিকেশন ট্রিগার করার চেষ্টা
+            if (notifEnabled && "Notification" in window) {
+                if (Notification.permission === "granted") {
+                    try {
+                        let iconUrl = currentStep === 'social' ? 
+                            "https://cdn-icons-png.flaticon.com/512/733/733547.png" : 
+                            "https://cdn-icons-png.flaticon.com/512/1006/1006771.png";
+
+                        let notification = new Notification(titleText, { 
+                            body: "Time is up! Click here to check.", 
+                            icon: iconUrl,
+                            requireInteraction: true 
+                        });
+                        notification.onclick = function() { window.focus(); notification.close(); };
+                    } catch (err) {
+                        console.log("Browser notification error:", err);
+                    }
+                } else if (Notification.permission !== "denied") {
+                    Notification.requestPermission();
+                }
+            }
+
+            // ২. সাউন্ড অ্যালার্ট বাজানো
+            if (soundEnabled) {
+                playBeepSound();
+            }
+
+            // ৩. ইউনিভার্সাল স্ক্রিন মডাল পপ-আপ (যা যেকোনো ব্রাউজারে ১০০% কাজ করবে)
+            modalAlertTitle.innerText = titleText;
+            universalAlertModal.style.display = 'flex';
+
+            // অটো লুপ অন থাকলে স্টেপ পরিবর্তন হবে
+            if (continuousEnabled) {
+                currentStep = (currentStep === 'social') ? 'web' : 'social';
+                currentTimeLeft = currentDuration;
+                updateUIStates();
+            } else {
+                isTimerRunning = false;
+                clearInterval(timerInterval);
+            }
+        }
+
+        closeModalBtn.addEventListener('click', () => {
+            universalAlertModal.style.display = 'none';
+        });
+
+        function startTimerInterval() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (isTimerRunning) {
+                    if (currentTimeLeft > 0) {
+                        currentTimeLeft--;
+                        updateDisplay();
+                    }
+                    if (currentTimeLeft === 0) {
+                        triggerUniversalAlert();
+                    }
+                }
+            }, 1000);
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (currentTimeLeft <= 0) currentTimeLeft = currentDuration;
+            isTimerRunning = true;
+            updateDisplay();
+            startTimerInterval();
+        });
+
+        pauseBtn.addEventListener('click', () => {
+            isTimerRunning = false;
+            updateDisplay();
+        });
+
+        resetBtn.addEventListener('click', () => {
+            isTimerRunning = false;
+            currentDuration = parseInt(intervalSelect.value);
+            currentTimeLeft = currentDuration;
+            updateDisplay();
+        });
+
+        intervalSelect.addEventListener('change', function() {
+            currentDuration = parseInt(this.value);
+            if (!isTimerRunning) {
+                currentTimeLeft = currentDuration;
+                updateDisplay();
             }
         });
+
+        manualSetBtn.addEventListener('click', () => {
+            let mins = parseInt(manualInput.value);
+            if (!isNaN(mins) && mins > 0) {
+                currentDuration = mins * 60;
+                currentTimeLeft = currentDuration;
+                manualInput.value = '';
+                updateDisplay();
+            } else {
+                alert('Please enter a valid number of minutes.');
+            }
+        });
+
+        socialDoneBtn.addEventListener('click', () => {
+            currentStep = 'web';
+            currentDuration = parseInt(intervalSelect.value);
+            currentTimeLeft = currentDuration;
+            isTimerRunning = true;
+            updateUIStates();
+            updateDisplay();
+            startTimerInterval();
+        });
+
+        webDoneBtn.addEventListener('click', () => {
+            currentStep = 'social';
+            currentDuration = parseInt(intervalSelect.value);
+            currentTimeLeft = currentDuration;
+            isTimerRunning = true;
+            updateUIStates();
+            updateDisplay();
+            startTimerInterval();
+        });
+
+        updateDisplay();
     </script>
 </body>
 </html>
