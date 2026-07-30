@@ -198,12 +198,20 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+// ১. পেজ লোড হওয়ার সাথে সাথে নোটিফিকেশন পারমিশন নেওয়ার কোড
+    document.addEventListener('DOMContentLoaded', () => {
+        if ("Notification" in window) {
             if (Notification.permission !== "granted" && Notification.permission !== "denied") {
-                Notification.requestPermission();
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        console.log("Notification permission granted.");
+                    }
+                });
             }
-        });
+        }
+    });
 
+        // ২. সকেট এবং DOM এলিমেন্ট ইনিশিয়ালাইজেশন
         const socket = io();
 
         const mainCard = document.getElementById('mainCard');
